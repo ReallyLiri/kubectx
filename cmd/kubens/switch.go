@@ -15,16 +15,11 @@
 package main
 
 import (
-	"context"
-	"io"
-	"os"
-
-	"github.com/pkg/errors"
-	errors2 "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
+	"github.com/ahmetb/kubectx/core/kubeclient"
 	"github.com/ahmetb/kubectx/core/kubeconfig"
 	"github.com/ahmetb/kubectx/core/printer"
+	"github.com/pkg/errors"
+	"io"
 )
 
 type SwitchOp struct {
@@ -69,7 +64,7 @@ func switchNamespace(kc *kubeconfig.Kubeconfig, ns string) (string, error) {
 		ns = prev
 	}
 
-	ok, err := namespaceExists(kc, ns)
+	ok, err := kubeclient.NamespaceExists(kc, ns)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to query if namespace exists (is cluster accessible?)")
 	}
@@ -89,23 +84,4 @@ func switchNamespace(kc *kubeconfig.Kubeconfig, ns string) (string, error) {
 		}
 	}
 	return ns, nil
-}
-
-func namespaceExists(kc *kubeconfig.Kubeconfig, ns string) (bool, error) {
-	// for tests
-	if os.Getenv("_MOCK_NAMESPACES") != "" {
-		return ns == "ns1" || ns == "ns2", nil
-	}
-
-	clientset, err := newKubernetesClientSet(kc)
-	if err != nil {
-		return false, errors.Wrap(err, "failed to initialize k8s REST client")
-	}
-
-	namespace, err := clientset.CoreV1().Namespaces().Get(context.Background(), ns, metav1.GetOptions{})
-	if errors2.IsNotFound(err) {
-		return false, nil
-	}
-	return namespace != nil, errors.Wrapf(err, "failed to query "+
-		"namespace %q from k8s API", ns)
 }

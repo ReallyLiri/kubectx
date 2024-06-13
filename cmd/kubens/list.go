@@ -15,19 +15,13 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"io"
-	"os"
-
-	"github.com/pkg/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	_ "k8s.io/client-go/plugin/pkg/client/auth"
-	"k8s.io/client-go/tools/clientcmd"
-
+	"github.com/ahmetb/kubectx/core/kubeclient"
 	"github.com/ahmetb/kubectx/core/kubeconfig"
 	"github.com/ahmetb/kubectx/core/printer"
+	"github.com/pkg/errors"
+	"io"
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
 
 type ListOp struct{}
@@ -48,7 +42,7 @@ func (op ListOp) Run(stdout, stderr io.Writer) error {
 		return errors.Wrap(err, "cannot read current namespace")
 	}
 
-	ns, err := queryNamespaces(kc)
+	ns, err := kubeclient.QueryNamespaces(kc)
 	if err != nil {
 		return errors.Wrap(err, "could not list namespaces (is the cluster accessible?)")
 	}
@@ -61,49 +55,4 @@ func (op ListOp) Run(stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "%s\n", s)
 	}
 	return nil
-}
-
-func queryNamespaces(kc *kubeconfig.Kubeconfig) ([]string, error) {
-	if os.Getenv("_MOCK_NAMESPACES") != "" {
-		return []string{"ns1", "ns2"}, nil
-	}
-
-	clientset, err := newKubernetesClientSet(kc)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to initialize k8s REST client")
-	}
-
-	var out []string
-	var next string
-	for {
-		list, err := clientset.CoreV1().Namespaces().List(
-			context.Background(),
-			metav1.ListOptions{
-				Limit:    500,
-				Continue: next,
-			})
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to list namespaces from k8s API")
-		}
-		next = list.Continue
-		for _, it := range list.Items {
-			out = append(out, it.Name)
-		}
-		if next == "" {
-			break
-		}
-	}
-	return out, nil
-}
-
-func newKubernetesClientSet(kc *kubeconfig.Kubeconfig) (*kubernetes.Clientset, error) {
-	b, err := kc.Bytes()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to convert in-memory kubeconfig to yaml")
-	}
-	cfg, err := clientcmd.RESTConfigFromKubeConfig(b)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to initialize config")
-	}
-	return kubernetes.NewForConfig(cfg)
 }
